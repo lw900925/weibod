@@ -27,7 +27,7 @@
 构建成功后，在`build/libs`目录下会生成一个名为`weibod.jar`的jar文件。
 
 ### 下载打包后的jar文件
-1. 下载 [weibod.jar](https://github.com/lw900925/weibod/releases/download/1.0.0/weibod.jar)。
+1. 在 [Release](https://github.com/lw900925/weibod/releases) 页面下载最新版本的jar文件。
 
 ## 如何运行
 
