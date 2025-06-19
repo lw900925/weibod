@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Terminal Emulation</title>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.7.14/dist/vue.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Courier New', Courier, monospace;
+      background-color: #2e3436;
+      color: #d3d7cf;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .terminal {
+      width: 80%;
+      width: 1200px;
+      max-width: 1200px;
+      padding: 20px;
+      background-color: #2e3436;
+      border: 1px solid #555753;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+      overflow-y: auto;
+      margin-top: 70px;
+    }
+
+    .terminal pre {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      margin: 0;
+    }
+
+    .prompt {
+      color: #729fcf;
+    }
+
+    .command {
+      color: #ef2929;
+    }
+
+    .output {
+      color: #fce94f;
+    }
+
+    .navbar {
+      width: 100%;
+      background-color: #232629;
+      padding: 8px 0 6px 0;
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 1000;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .navbar-content {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .navbar input[type="text"] {
+      padding: 4px 10px;
+      border: none;
+      border-radius: 0;
+      background: #383e41;
+      color: #d3d7cf;
+      font-size: 1rem;
+      outline: none;
+      height: 28px;
+      box-sizing: border-box;
+    }
+
+    .navbar input[type="text"]::placeholder {
+      font-size: 0.92rem;
+      color: #888;
+    }
+
+    .navbar button {
+      padding: 0 14px;
+      border: none;
+      border-radius: 0;
+      background: #1677ff;
+      color: #fff;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: background 0.2s;
+      height: 28px;
+      line-height: 28px;
+      box-sizing: border-box;
+    }
+
+    .navbar button:hover {
+      background: #0958d9;
+    }
+
+    .navbar-select {
+      padding: 4px 10px;
+      border: none;
+      border-radius: 0;
+      background: #383e41;
+      color: #d3d7cf;
+      font-size: 0.8rem;
+      outline: none;
+      height: 28px;
+      box-sizing: border-box;
+      margin: 0 4px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app">
+    <div class="navbar">
+      <div class="navbar-content">
+        <input type="text" v-model="inputText" placeholder="请输入uid..." @keyup.enter="startStream">
+        <select v-model="filterType" class="navbar-select">
+          <option value="all">所有</option>
+          <option value="livephoto">仅LivePhoto</option>
+        </select>
+        <button @click="startStream" :disabled="loading">{{ loading ? '处理中...' : '开始' }}</button>
+      </div>
+    </div>
+    <div class="terminal">
+      <pre v-html="terminalContent"></pre>
+    </div>
+  </div>
+  <script>
+    new Vue({
+      el: '#app',
+      data: {
+        inputText: '',
+        terminalContent: '没有正在下载的用户...',
+        loading: false,
+        eventSource: null,
+        filterType: 'livephoto'
+      },
+      methods: {
+        startStream() {
+          if (!this.inputText.trim() || this.loading) return;
+          this.terminalContent = '';
+          this.loading = true;
+          if (this.eventSource) {
+            this.eventSource.close();
+          }
+          // 拼接参数到URL
+          const url = `/start?uid=${encodeURIComponent(this.inputText)}&filter=${encodeURIComponent(this.filterType)}`;
+          this.eventSource = new EventSource(url);
+          this.eventSource.onmessage = (event) => {
+            this.terminalContent += '<prompt>' + event.data + '</prompt>\n';
+          };
+          this.eventSource.onerror = () => {
+            this.loading = false;
+            if (this.eventSource) {
+              this.eventSource.close();
+              this.eventSource = null;
+            }
+          };
+          this.eventSource.onopen = () => {
+            this.loading = false;
+          };
+        }
+      },
+      beforeDestroy() {
+        if (this.eventSource) {
+          this.eventSource.close();
+        }
+      }
+    });
+  </script>
+</body>
+
+</html>

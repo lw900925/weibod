@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: twid
+
+logging:
+  level:
+    io.lw900925.weibod: debug
+
+weibod:
+  weibo:
+    api:
+      base-url: https://m.weibo.cn/api
+    dest-dir: ${user.dir}/downloads
+    cache-dir: ${user.dir}/cache/timeline_id.json
+    user-dir: ${user.dir}/config/list.txt

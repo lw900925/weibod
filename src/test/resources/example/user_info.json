@@ -1,0 +1,110 @@
+{
+    "ok": 1,
+    "data": {
+        "avatar_guide": [],
+        "isStarStyle": 0,
+        "userInfo": {
+            "id": 2644358083,
+            "screen_name": "大猫HI",
+            "profile_image_url": "https://tvax1.sinaimg.cn/crop.0.0.512.512.180/9d9db3c3ly8gtgh3nydegj20e80e8mxl.jpg?KID=imgbed,tva&Expires=1629369979&ssig=x%2FminPz6Si",
+            "profile_url": "https://m.weibo.cn/u/2644358083?uid=2644358083&luicode=10000011&lfid=1005052644358083",
+            "statuses_count": 57,
+            "verified": false,
+            "verified_type": -1,
+            "close_blue_v": false,
+            "description": "这个人很懒，什么都不想写...",
+            "gender": "m",
+            "mbtype": 0,
+            "urank": 35,
+            "mbrank": 0,
+            "follow_me": false,
+            "following": false,
+            "followers_count": 105,
+            "follow_count": 91,
+            "cover_image_phone": "https://tva4.sinaimg.cn/crop.0.0.640.640.640/6ce2240djw1e8iktk4ohij20hs0hsmz6.jpg",
+            "avatar_hd": "https://wx1.sinaimg.cn/orj480/9d9db3c3ly8gtgh3nydegj20e80e8mxl.jpg",
+            "like": false,
+            "like_me": false,
+            "toolbar_menus": [
+                {
+                    "type": "profile_follow",
+                    "name": "关注",
+                    "pic": "",
+                    "params": {
+                        "uid": 2644358083,
+                        "extparams": {
+                            "followcardid": null
+                        }
+                    },
+                    "userInfo": {
+                        "id": 2644358083,
+                        "idstr": "2644358083",
+                        "screen_name": "大猫HI",
+                        "profile_image_url": "https://tvax1.sinaimg.cn/crop.0.0.512.512.50/9d9db3c3ly8gtgh3nydegj20e80e8mxl.jpg?KID=imgbed,tva&Expires=1629369979&ssig=xW8flE76Jh",
+                        "following": false,
+                        "verified": false,
+                        "verified_type": -1,
+                        "remark": "",
+                        "avatar_large": "https://tvax1.sinaimg.cn/crop.0.0.512.512.180/9d9db3c3ly8gtgh3nydegj20e80e8mxl.jpg?KID=imgbed,tva&Expires=1629369979&ssig=x%2FminPz6Si",
+                        "avatar_hd": "https://tvax1.sinaimg.cn/crop.0.0.512.512.1024/9d9db3c3ly8gtgh3nydegj20e80e8mxl.jpg?KID=imgbed,tva&Expires=1629369979&ssig=H9IOmYnBcO",
+                        "follow_me": false,
+                        "mbtype": 0,
+                        "mbrank": 0,
+                        "level": 1,
+                        "type": 1,
+                        "story_read_state": -1,
+                        "allow_msg": 1,
+                        "special_follow": false
+                    }
+                },
+                {
+                    "type": "link",
+                    "name": "聊天",
+                    "pic": "http://h5.sinaimg.cn/upload/2015/06/12/2/toolbar_icon_discuss_default.png",
+                    "params": {
+                        "scheme": "sinaweibo://messagelist?uid=2644358083&nick=大猫HI"
+                    },
+                    "scheme": "https://passport.weibo.cn/signin/welcome?entry=mweibo&r=https%3A%2F%2Fm.weibo.cn%2Fapi%2Fcontainer%2FgetIndex%3Ftype%3Duid%26value%3D2644358083"
+                }
+            ]
+        },
+        "fans_scheme": "https://m.weibo.cn/c/attention/visit?showmenu=0&sign=2644358083&source=MQ%3D%3D&role=NA%3D%3D&luicode=10000011&lfid=1005052644358083",
+        "follow_scheme": "https://m.weibo.cn/c/attention/visit?showmenu=0&sign=2644358083&source=MA%3D%3D&role=NA%3D%3D&luicode=10000011&lfid=1005052644358083",
+        "tabsInfo": {
+            "selectedTab": 1,
+            "tabs": [
+                {
+                    "id": 1,
+                    "tabKey": "profile",
+                    "must_show": 1,
+                    "hidden": 0,
+                    "title": "主页",
+                    "tab_type": "profile",
+                    "containerid": "2302832644358083"
+                },
+                {
+                    "id": 2,
+                    "tabKey": "weibo",
+                    "must_show": 1,
+                    "hidden": 0,
+                    "title": "微博",
+                    "tab_type": "weibo",
+                    "containerid": "1076032644358083",
+                    "apipath": "/profile/statuses",
+                    "url": "/index/my"
+                },
+                {
+                    "id": 10,
+                    "tabKey": "album",
+                    "must_show": 0,
+                    "hidden": 0,
+                    "title": "相册",
+                    "tab_type": "album",
+                    "containerid": "1078032644358083"
+                }
+            ]
+        },
+        "scheme": "sinaweibo://userinfo?uid=2644358083&type=uid&value=2644358083&_T_WM=60396399229&v_p=42&uid=2644358083&luicode=10000011&lfid=1005052644358083",
+        "showAppTips": 0
+    }
+}
