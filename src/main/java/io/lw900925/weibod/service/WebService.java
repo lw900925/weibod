@@ -274,6 +274,7 @@ public class WebService {
         return map;
     }
 
+    @SuppressWarnings("unchecked")
     private void download(Map<String, Object> map, Map<String, Map<String, String>> cacheMap, FluxSink<String> sink) {
         if (map == null || ((JsonArray) map.get("timelines")).size() == 0) {
             return;
