@@ -2,7 +2,11 @@ package io.lw900925.weibod.service;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.ProtocolException;
+import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -18,6 +22,7 @@ import java.util.Objects;
 import java.util.Spliterator;
 import java.util.Spliterators;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -86,10 +91,13 @@ public class WebService {
                 JsonArray caches = JsonParser.parseString(jsonStr).getAsJsonArray();
                 return StreamSupport.stream(Spliterators.spliteratorUnknownSize(caches.iterator(), 0), false)
                         .map(c -> c.getAsJsonObject())
-                        .map(c -> ImmutableMap.<String, String>builder()
-                                .put("uid", c.get("uid").getAsString())
-                                .put("screen_name", c.get("screen_name").getAsString())
-                                .put("item_id", c.get("item_id").getAsString()).build())
+                        .map(c -> {
+                            Map<String, String> cache = Maps.newHashMap();
+                            cache.put("uid", c.get("uid").getAsString());
+                            cache.put("screen_name", c.get("screen_name").getAsString());
+                            cache.put("item_id", c.get("item_id").getAsString());
+                            return cache;
+                        })
                         .collect(Collectors.toMap(map -> map.get("uid"), map -> map));
             } catch (IOException e) {
                 logger.error(String.format("读取缓存文件失败：%s", e.getMessage()), e);
@@ -228,7 +236,6 @@ public class WebService {
 
         JsonObject user = (JsonObject) map.get("user");
         JsonArray timelines = (JsonArray) map.get("timelines");
-        // boolean onlyLive = (boolean) map.get("ONLY_LIVE");
 
         if (timelines.size() == 0) {
             map.put("live_photos", list);
@@ -239,31 +246,32 @@ public class WebService {
             JsonObject mblog = timeline.getAsJsonObject().get("mblog").getAsJsonObject();
             String createdAt = mblog.get("created_at").getAsString();
 
-            // 判断是否有live_photo标签
-            if (mblog.has("live_photo")) {
+            // 获取所有pics标签
+            if (mblog.has("pics")) {
                 JsonArray pics = mblog.get("pics").getAsJsonArray();
-                StreamSupport.stream(Spliterators.spliteratorUnknownSize(pics.iterator(), Spliterator.ORDERED), false)
-                        .map(JsonElement::getAsJsonObject)
-                        .forEach(pic -> {
-                            String picUrl = pic.get("large").getAsJsonObject().get("url").getAsString();
-                            if (pic.get("videoSrc") != null) {
-                                String movUrl = pic.get("videoSrc").getAsString();
-                                list.add(ImmutableMap.<String, String>builder()
-                                        .put("img", picUrl)
-                                        .put("mov", movUrl)
-                                        .put("created_at", createdAt)
-                                        .build());
-                            }
-                        });
-            }
+                for (int i = 0; i < pics.size(); i++) {
+                    JsonObject pic = pics.get(i).getAsJsonObject();
 
-            if ("all".equals(filter) && !mblog.has("live_photo")
-                    && !mblog.get("pic_num").getAsString().equals("0")) {
-                JsonArray pics = mblog.get("pics").getAsJsonArray();
-                StreamSupport.stream(Spliterators.spliteratorUnknownSize(pics.iterator(), Spliterator.ORDERED), false)
-                        .map(jsonElement -> jsonElement.getAsJsonObject().get("large").getAsJsonObject()
-                                .get("url").getAsString())
-                        .forEach(url -> list.add(ImmutableMap.of("img", url, "created_at", createdAt)));
+                    Map<String, String> picMap = Maps.newHashMap();
+                    picMap.put("created_at", createdAt);
+                    picMap.put("index", String.valueOf(i + 1));
+
+                    // 如果仅下载LivePhoto且该图片是LivePhoto
+                    String picUrl = pic.get("large").getAsJsonObject().get("url").getAsString();
+                    if ("livephoto".equals(filter)) {
+                        if (!pic.has("videoSrc")) {
+                            continue; // 如果没有videoSrc标签，跳过这张图
+                        }
+                        String movUrl = pic.get("videoSrc").getAsString();
+                        picMap.put("img", picUrl);
+                        picMap.put("mov", movUrl);
+                        list.add(picMap);
+                    } else if ("all".equals(filter)) {
+                        picMap.put("img", picUrl);
+                        list.add(picMap);
+                    }
+                }
+
             }
         });
 
@@ -296,6 +304,7 @@ public class WebService {
             String imgUrl = livePhoto.get("img");
             String movUrl = livePhoto.get("mov");
             String createdAt = livePhoto.get("created_at");
+            String i = livePhoto.get("index");
 
             LocalDateTime createDate = LocalDateTime.parse(createdAt,
                     DateTimeFormatter.ofPattern("E MMM dd HH:mm:ss Z yyyy", Locale.ENGLISH));
@@ -305,28 +314,33 @@ public class WebService {
             List<String> filenames = Lists.newArrayList(imgUrl, movUrl).stream().filter(Objects::nonNull).map(url -> {
                 // 文件命格式：yyyy_MM_dd_HH_mm_IMG_0001.JPG
                 String filename = DateTimeFormatter.ofPattern("yyyy_MM_dd_HH_mm").format(createDate)
-                        + "_IMG_" + Strings.padStart(String.valueOf(index), 4, '0') + "."
+                        + "_IMG_"
+                        + Strings.padStart(String.valueOf(i), 4, '0')
+                        + "."
                         + getFileExtension(url).toUpperCase();
 
-                Request request = new Request.Builder().url(url).get().build();
-                try (Response response = okHttpClient.newCall(request).execute()) {
+                String[] filenameHolder = { filename };
+
+                post(url, 5, response -> {
                     if (response.isSuccessful()) {
                         try (InputStream inputStream = Objects.requireNonNull(response.body()).byteStream()) {
                             Path path = Paths.get(destDir, screenName, filename);
                             Files.createDirectories(path.getParent());
                             Files.copy(inputStream, path);
+                        } catch (FileAlreadyExistsException e) {
+                            filenameHolder[0] = String.format("skip exists %s", filename);
+                        } catch (IOException e) {
+                            filenameHolder[0] = String.format("写入本地文件失败: url = %s, filename = %s", url, filename);
+                            logger.error(filenameHolder[0]);
+                            logger.error(e.getMessage(), e);
                         }
                     } else {
-                        filename = String.format("文件下载出错 - code = %s, message = %s, url = %s",
+                        filenameHolder[0] = String.format("文件下载出错 - code = %s, message = %s, url = %s",
                                 response.code(), response.message(), url);
-                        logger.error(filename);
+                        logger.error(filenameHolder[0]);
                     }
-                } catch (IOException e) {
-                    filename = String.format("写入本地文件失败: url = %s, filename = %s", url, filename);
-                    logger.error(filename);
-                    logger.error(e.getMessage(), e);
-                }
-                return filename;
+                });
+                return filenameHolder[0];
             }).collect(Collectors.toList());
 
             String str = String.format("%s - 第[%s/%s]个文件下载完成: %s",
@@ -336,19 +350,110 @@ public class WebService {
         });
 
         // 所有媒体下载完成，更新timeline_id
-        Map<String, String> cache = cacheMap.getOrDefault(user.get("id").getAsString(),
-                ImmutableMap.<String, String>builder()
-                        .put("uid", user.get("id").getAsString())
-                        .put("screen_name", screenName)
-                        .put("item_id", topItem.get("itemid").getAsString())
-                        .build());
+        Map<String, String> cache = cacheMap.getOrDefault(user.get("id").getAsString(), Maps.newHashMap());
+        cache.put("uid", user.get("id").getAsString());
+        cache.put("screen_name", screenName);
+        cache.put("item_id", topItem.get("itemid").getAsString());
+
         cacheMap.put(user.get("id").getAsString(), cache);
 
         sink.next(String.format("%s - 下载完成", screenName));
     }
 
-    private String getFileExtension(String filename) {
-        return filename.substring(filename.lastIndexOf(".") + 1);
+    private String getFileExtension(String url) {
+        try {
+            URI uri = new URI(url);
+            String path = uri.getPath();
+
+            // 优先从路径提取扩展名
+            String ext = extractExtensionFromPath(path);
+            if (ext != null)
+                return ext;
+
+            // 如果路径无扩展名，尝试从查询参数提取
+            String query = uri.getQuery();
+            if (query != null && !query.isEmpty()) {
+                Map<String, String> params = parseQueryParams(uri);
+                for (Map.Entry<String, String> entry : params.entrySet()) {
+                    String paramValue = entry.getValue();
+                    if (paramValue != null && paramValue.toLowerCase().startsWith("http")) {
+                        // 递归处理嵌套URL
+                        ext = getFileExtension(paramValue);
+                        if (ext != null)
+                            return ext;
+                    }
+                }
+            }
+
+            return null;
+        } catch (Exception e) {
+            logger.error("获取文件扩展名异常: {}", url, e);
+            return null;
+        }
+    }
+
+    // 从路径提取扩展名的私有方法
+    private String extractExtensionFromPath(String path) {
+        if (path == null || path.isEmpty())
+            return null;
+
+        int lastSlashIndex = path.lastIndexOf('/');
+        String filename = (lastSlashIndex != -1)
+                ? path.substring(lastSlashIndex + 1)
+                : path;
+
+        int lastDotIndex = filename.lastIndexOf('.');
+        return (lastDotIndex != -1)
+                ? filename.substring(lastDotIndex + 1).toLowerCase()
+                : null;
+    }
+
+    // 复用之前的查询参数解析方法
+    private Map<String, String> parseQueryParams(URI uri) {
+        Map<String, String> queryPairs = new HashMap<>();
+        if (uri == null || uri.getQuery() == null) {
+            return queryPairs;
+        }
+
+        String[] pairs = uri.getQuery().split("&");
+        for (String pair : pairs) {
+            int idx = pair.indexOf("=");
+            String key = idx > 0 ? pair.substring(0, idx) : pair;
+            String value = idx > 0 ? pair.substring(idx + 1) : null;
+
+            try {
+                // 使用UTF-8解码
+                key = URLDecoder.decode(key, "utf-8");
+                if (value != null) {
+                    value = URLDecoder.decode(value, "utf-8");
+                }
+            } catch (Exception e) {
+                logger.warn("URL参数解码失败: {}", pair);
+            }
+
+            queryPairs.put(key, value);
+        }
+
+        return queryPairs;
+    }
+
+    private void post(String url, int retry, Consumer<Response> callback) {
+        if (retry < 0) {
+            logger.warn("重试次数用完，文件下载失败: url = {}", url);
+            return;
+        }
+
+        Request request = new Request.Builder().url(url).get().build();
+        try (Response response = okHttpClient.newCall(request).execute()) {
+            callback.accept(response);
+        } catch (IOException e) {
+            if (e instanceof ProtocolException) {
+                logger.warn("POST请求失败，正在重试: retry = {}， url = {}", retry, url);
+                post(url, --retry, callback);
+            } else {
+                logger.error(e.getMessage(), e);
+            }
+        }
     }
 
     private void saveCache(Map<String, Map<String, String>> cacheMap) {
