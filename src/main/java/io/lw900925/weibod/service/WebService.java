@@ -19,7 +19,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Spliterator;
 import java.util.Spliterators;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -293,7 +292,6 @@ public class WebService {
         List<Map<String, String>> livePhotos = (List<Map<String, String>>) map.get("live_photos");
 
         String screenName = user.get("screen_name").getAsString();
-        String destDir = properties.getWeibo().getDestDir();
 
         sink.next(String.format("%s - 开始下载...", screenName));
         logger.debug("{} - 开始下载...", screenName);
@@ -312,35 +310,15 @@ public class WebService {
             int index = indexAI.incrementAndGet();
 
             List<String> filenames = Lists.newArrayList(imgUrl, movUrl).stream().filter(Objects::nonNull).map(url -> {
-                // 文件命格式：yyyy_MM_dd_HH_mm_IMG_0001.JPG
-                String filename = DateTimeFormatter.ofPattern("yyyy_MM_dd_HH_mm").format(createDate)
+                // 文件命格式：yyyy_MM_dd_HH_mm_ss_IMG_0001.JPG
+                String filename = DateTimeFormatter.ofPattern("yyyy_MM_dd_HH_mm_ss").format(createDate)
                         + "_IMG_"
                         + Strings.padStart(String.valueOf(i), 4, '0')
                         + "."
                         + getFileExtension(url).toUpperCase();
 
-                String[] filenameHolder = { filename };
-
-                post(url, 5, response -> {
-                    if (response.isSuccessful()) {
-                        try (InputStream inputStream = Objects.requireNonNull(response.body()).byteStream()) {
-                            Path path = Paths.get(destDir, screenName, filename);
-                            Files.createDirectories(path.getParent());
-                            Files.copy(inputStream, path);
-                        } catch (FileAlreadyExistsException e) {
-                            filenameHolder[0] = String.format("skip exists %s", filename);
-                        } catch (IOException e) {
-                            filenameHolder[0] = String.format("写入本地文件失败: url = %s, filename = %s", url, filename);
-                            logger.error(filenameHolder[0]);
-                            logger.error(e.getMessage(), e);
-                        }
-                    } else {
-                        filenameHolder[0] = String.format("文件下载出错 - code = %s, message = %s, url = %s",
-                                response.code(), response.message(), url);
-                        logger.error(filenameHolder[0]);
-                    }
-                });
-                return filenameHolder[0];
+                // 下载文件
+                return post(url, filename, screenName, 5);
             }).collect(Collectors.toList());
 
             String str = String.format("%s - 第[%s/%s]个文件下载完成: %s",
@@ -437,22 +415,49 @@ public class WebService {
         return queryPairs;
     }
 
-    private void post(String url, int retry, Consumer<Response> callback) {
+    private String post(String url, String filename, String screenName, int retry) {
         if (retry < 0) {
             logger.warn("重试次数用完，文件下载失败: url = {}", url);
-            return;
+            return filename;
         }
 
+        String destDir = properties.getWeibo().getDestDir();
         Request request = new Request.Builder().url(url).get().build();
         try (Response response = okHttpClient.newCall(request).execute()) {
-            callback.accept(response);
-        } catch (IOException e) {
-            if (e instanceof ProtocolException) {
-                logger.warn("POST请求失败，正在重试: retry = {}， url = {}", retry, url);
-                post(url, --retry, callback);
+            if (response.isSuccessful()) {
+                try (InputStream inputStream = Objects.requireNonNull(response.body()).byteStream()) {
+                    Path path = Paths.get(destDir, screenName, filename);
+                    Files.createDirectories(path.getParent());
+                    Files.copy(inputStream, path);
+                }
             } else {
-                logger.error(e.getMessage(), e);
+                filename = String.format("文件下载出错 - code = %s, message = %s, url = %s",
+                        response.code(), response.message(), url);
+                logger.error(filename);
             }
+        } catch (ProtocolException e) {
+            if ("unexpected end of stream".equals(e.getMessage())) {
+                logger.warn("POST请求失败，正在重试: retry = {}，filename = {}, url = {}", retry, filename, url);
+                deleteIfExists(Paths.get(destDir, screenName, filename));
+                post(url, filename, screenName, --retry);
+            }
+        } catch (FileAlreadyExistsException e) {
+            logger.warn("文件已存在，跳过下载：filename = {}, url = {}", filename, url);
+            filename = String.format("[SKIP]:%s", filename);
+        } catch (IOException e) {
+            filename = String.format("写入本地文件失败: url = %s, filename = %s", url, filename);
+            logger.error(filename);
+            logger.error(e.getMessage(), e);
+        }
+
+        return filename;
+    }
+
+    private void deleteIfExists(Path path) {
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException e) {
+            logger.error(e.getMessage(), e);
         }
     }
 
