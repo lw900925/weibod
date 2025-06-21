@@ -21,7 +21,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Spliterators;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -306,14 +305,15 @@ public class WebService {
 
             LocalDateTime createDate = LocalDateTime.parse(createdAt,
                     DateTimeFormatter.ofPattern("E MMM dd HH:mm:ss Z yyyy", Locale.ENGLISH));
+            String second = DateTimeFormatter.ofPattern("ss").format(createDate);
 
             int index = indexAI.incrementAndGet();
 
             List<String> filenames = Lists.newArrayList(imgUrl, movUrl).stream().filter(Objects::nonNull).map(url -> {
                 // 文件命格式：yyyy_MM_dd_HH_mm_ss_IMG_0001.JPG
-                String filename = DateTimeFormatter.ofPattern("yyyy_MM_dd_HH_mm_ss").format(createDate)
+                String filename = DateTimeFormatter.ofPattern("yyyy_MM_dd_HH_mm").format(createDate)
                         + "_IMG_"
-                        + Strings.padStart(String.valueOf(i), 4, '0')
+                        + Strings.padStart(i + second, 4, '0')
                         + "."
                         + getFileExtension(url).toUpperCase();
 
