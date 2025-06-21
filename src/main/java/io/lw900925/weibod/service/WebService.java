@@ -256,18 +256,21 @@ public class WebService {
 
                     // 如果仅下载LivePhoto且该图片是LivePhoto
                     String picUrl = pic.get("large").getAsJsonObject().get("url").getAsString();
-                    if ("livephoto".equals(filter)) {
-                        if (!pic.has("videoSrc")) {
-                            continue; // 如果没有videoSrc标签，跳过这张图
+                    if ("all".equals(filter)) {
+                        picMap.put("img", picUrl);
+                        if (pic.has("videoSrc")) {
+                            String movUrl = pic.get("videoSrc").getAsString();
+                            picMap.put("mov", movUrl);
                         }
+                    } else if ("livephoto".equals(filter) && pic.has("videoSrc")) {
                         String movUrl = pic.get("videoSrc").getAsString();
                         picMap.put("img", picUrl);
                         picMap.put("mov", movUrl);
-                        list.add(picMap);
-                    } else if ("all".equals(filter)) {
-                        picMap.put("img", picUrl);
-                        list.add(picMap);
+                    } else {
+                        continue;
                     }
+
+                    list.add(picMap);
                 }
 
             }
