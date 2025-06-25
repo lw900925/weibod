@@ -67,6 +67,7 @@ public class WeibodProperties {
 
         public static class Api {
             private String baseUrl;
+            private String cookie;
 
             public String getBaseUrl() {
                 return baseUrl;
@@ -74,6 +75,14 @@ public class WeibodProperties {
 
             public void setBaseUrl(String baseUrl) {
                 this.baseUrl = baseUrl;
+            }
+
+            public String getCookie() {
+                return cookie;
+            }
+
+            public void setCookie(String cookie) {
+                this.cookie = cookie;
             }
         }
     }

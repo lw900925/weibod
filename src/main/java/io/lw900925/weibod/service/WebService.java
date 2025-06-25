@@ -37,9 +37,9 @@ import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.util.concurrent.RateLimiter;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
@@ -63,6 +63,8 @@ public class WebService {
     private WeibodProperties properties;
     @Autowired
     private Gson gson;
+
+    private RateLimiter rateLimiter = RateLimiter.create(0.5);
 
     public void run(String uid, String filter, FluxSink<String> sink) {
         // 1.获取缓存
@@ -93,7 +95,7 @@ public class WebService {
                             Map<String, String> cache = Maps.newHashMap();
                             cache.put("uid", c.get("uid").getAsString());
                             cache.put("screen_name", c.get("screen_name").getAsString());
-                            cache.put("item_id", c.get("item_id").getAsString());
+                            cache.put("created_at", c.get("created_at").getAsString());
                             return cache;
                         })
                         .collect(Collectors.toMap(map -> map.get("uid"), map -> map));
@@ -106,9 +108,15 @@ public class WebService {
 
     public Map<String, Object> getTimelines(String uid, Map<String, Map<String, String>> cacheMap,
             FluxSink<String> sink) {
-        JsonObject userInfo = getUserInfo(uid, sink);
 
+        // 获取用户信息
+        JsonObject userInfo = getUserInfo(uid, sink);
         String screenName = userInfo.get("screen_name").getAsString();
+
+        // 获取缓存信息
+        Map<String, String> cache = cacheMap.getOrDefault(uid, Maps.newHashMap());
+        cache.put("uid", uid);
+        cache.put("screen_name", screenName);
 
         // statuses_count
         int count = userInfo.get("statuses_count").getAsInt();
@@ -119,23 +127,22 @@ public class WebService {
         sink.next(String.format("%s - 总共有%s条微博", screenName, count));
         logger.debug("{} - 总共有{}条微博", screenName, count);
 
-        // 一个简单的分页逻辑
-        int page = 0;
         int size = properties.getWeibo().getSize();
-        if (count % size == 0) {
-            page = count / size;
-        } else {
-            page = (count / size) + 1;
-        }
 
         String url = properties.getWeibo().getApi().getBaseUrl() + "/container/getIndex";
         Map<String, String> parameters = new HashMap<>();
-        parameters.put("count", String.valueOf(size));
+        parameters.put("type", "uid");
+        parameters.put("value", uid);
         parameters.put("containerid", "107603" + uid);
+        parameters.put("count", String.valueOf(size));
 
-        JsonArray timelines = new JsonArray();
-        for (int i = 0; i < page; i++) {
-            parameters.put("page", String.valueOf(i + 1));
+        JsonArray mblogs = new JsonArray();
+        boolean hasMore = true;
+        int index = 0;
+        while (true) {
+            // 这个接口频繁访问会返回403，需要控制访问频率
+            // 获取令牌，控制请求频率
+            rateLimiter.acquire();
 
             String jsonStr = httpGet(url, parameters);
             JsonObject jsonObject = JsonParser.parseString(jsonStr).getAsJsonObject();
@@ -143,35 +150,64 @@ public class WebService {
                 break;
             }
 
-            JsonArray pageTimelines = jsonObject.get("data").getAsJsonObject().get("cards").getAsJsonArray();
-            // 从缓存中获取最大记录
-            Map<String, String> cache = cacheMap.get(uid);
-            if (cache != null) {
-                long search = StreamSupport
-                        .stream(Spliterators.spliteratorUnknownSize(pageTimelines.iterator(), 0), false)
-                        .map(JsonElement::getAsJsonObject)
-                        .filter(timeline -> timeline.get("itemid").getAsString().equals(cache.get("item_id")))
-                        .count();
-                if (search > 0) {
-                    break;
+            JsonObject cardlistInfo = jsonObject.get("data").getAsJsonObject().get("cardlistInfo").getAsJsonObject();
+            if (cardlistInfo.has("since_id")) {
+                parameters.put("since_id", cardlistInfo.get("since_id").getAsString());
+            } else if (cardlistInfo.has("total") || cardlistInfo.has("page")) {
+                hasMore = false;
+            }
+
+            // 增量抓取逻辑
+            JsonArray cards = jsonObject.get("data").getAsJsonObject().get("cards").getAsJsonArray();
+            for (int i = 0; i < cards.size(); i++) {
+                JsonObject card = cards.get(i).getAsJsonObject();
+                if (card.get("card_type").getAsInt() == 9) {
+                    JsonObject mblog = card.get("mblog").getAsJsonObject();
+                    if (mblog.get("mblogtype").getAsInt() != 2) { // 过滤掉置顶微博
+                        if (cache.containsKey("created_at")) {
+                            // 当前微博创建时间
+                            LocalDateTime createAt = LocalDateTime.parse(mblog.get("created_at").getAsString(),
+                                    DateTimeFormatter.ofPattern("E MMM dd HH:mm:ss Z yyyy", Locale.ENGLISH));
+
+                            // 缓存中最新的微博创建时间
+                            LocalDateTime latest = LocalDateTime.parse(cache.get("created_at"),
+                                    DateTimeFormatter.ofPattern("E MMM dd HH:mm:ss Z yyyy", Locale.ENGLISH));
+
+                            // 只保留缓存中创建时间之后的微博
+                            if (createAt.isBefore(latest)) {
+                                hasMore = false;
+                                break;
+                            }
+                        }
+
+                        mblogs.add(mblog);
+                    }
                 }
             }
 
-            timelines.addAll(pageTimelines);
+            sink.next(String.format("%s - 第%s次抓取，本次返回%s条timeline", screenName, index + 1, cards.size()));
+            logger.debug("{} - 第{}次抓取，本次返回{}条timeline", screenName, index + 1, cards.size());
 
-            sink.next(String.format("%s - 第%s次抓取，本次返回%s条timeline", screenName, i + 1, pageTimelines.size()));
-            logger.debug("{} - 第{}次抓取，本次返回{}条timeline", screenName, i + 1, pageTimelines.size());
+            index++;
+
+            if (!hasMore) {
+                break;
+            }
         }
 
-        sink.next(String.format("%s - 所有timeline已经获取完毕，结果集中共包含%s条", screenName, timelines.size()));
-        logger.debug("{} - 所有timeline已经获取完毕，结果集中共包含{}条", screenName, timelines.size());
+        sink.next(String.format("%s - 所有timeline已经获取完毕，结果集中共包含%s条", screenName, mblogs.size()));
+        logger.debug("{} - 所有timeline已经获取完毕，结果集中共包含{}条", screenName, mblogs.size());
+
+        // 更新缓存
+        if (mblogs.size() > 0) {
+            JsonObject mblog = mblogs.get(0).getAsJsonObject();
+            cache.put("created_at", mblog.get("created_at").getAsString());
+        }
+        cacheMap.put(uid, cache);
 
         Map<String, Object> map = Maps.newHashMap();
-        if (timelines.size() > 0) {
-            map.put("top_item", timelines.get(0));
-        }
         map.put("user", userInfo);
-        map.put("timelines", timelines);
+        map.put("mblogs", mblogs);
         return map;
     }
 
@@ -192,7 +228,7 @@ public class WebService {
         return msg.get("data").getAsJsonObject().get("userInfo").getAsJsonObject();
     }
 
-    public String httpGet(String url, Map<String, String> parameters) {
+    private String httpGet(String url, Map<String, String> parameters) {
         String jsonStr = null;
 
         String[] keyValuePairs = parameters.entrySet().stream()
@@ -214,7 +250,7 @@ public class WebService {
         return jsonStr;
     }
 
-    public static String decode(String str) {
+    private static String decode(String str) {
         Pattern pattern = Pattern.compile("(\\\\u(\\p{XDigit}{4}))");
         Matcher matcher = pattern.matcher(str);
         char ch;
@@ -233,15 +269,15 @@ public class WebService {
         }
 
         JsonObject user = (JsonObject) map.get("user");
-        JsonArray timelines = (JsonArray) map.get("timelines");
+        JsonArray mblogs = (JsonArray) map.get("mblogs");
 
-        if (timelines.size() == 0) {
+        if (mblogs.size() == 0) {
             map.put("live_photos", list);
             return map;
         }
 
-        timelines.forEach(timeline -> {
-            JsonObject mblog = timeline.getAsJsonObject().get("mblog").getAsJsonObject();
+        mblogs.forEach(element -> {
+            JsonObject mblog = element.getAsJsonObject();
             String createdAt = mblog.get("created_at").getAsString();
 
             // 获取所有pics标签
@@ -285,12 +321,11 @@ public class WebService {
 
     @SuppressWarnings("unchecked")
     private void download(Map<String, Object> map, Map<String, Map<String, String>> cacheMap, FluxSink<String> sink) {
-        if (map == null || ((JsonArray) map.get("timelines")).size() == 0) {
+        if (map == null || ((JsonArray) map.get("mblogs")).size() == 0) {
             return;
         }
 
         JsonObject user = (JsonObject) map.get("user");
-        JsonObject topItem = (JsonObject) map.get("top_item");
         List<Map<String, String>> livePhotos = (List<Map<String, String>>) map.get("live_photos");
 
         String screenName = user.get("screen_name").getAsString();
@@ -329,14 +364,6 @@ public class WebService {
             sink.next(str);
             logger.debug(str);
         });
-
-        // 所有媒体下载完成，更新timeline_id
-        Map<String, String> cache = cacheMap.getOrDefault(user.get("id").getAsString(), Maps.newHashMap());
-        cache.put("uid", user.get("id").getAsString());
-        cache.put("screen_name", screenName);
-        cache.put("item_id", topItem.get("itemid").getAsString());
-
-        cacheMap.put(user.get("id").getAsString(), cache);
 
         sink.next(String.format("%s - 下载完成", screenName));
     }
@@ -456,14 +483,6 @@ public class WebService {
         return filename;
     }
 
-    private void deleteIfExists(Path path) {
-        try {
-            Files.deleteIfExists(path);
-        } catch (IOException e) {
-            logger.error(e.getMessage(), e);
-        }
-    }
-
     private void saveCache(Map<String, Map<String, String>> cacheMap) {
         try {
             // 保存缓存文件
@@ -471,8 +490,16 @@ public class WebService {
             String jsonStr = gson.toJson(caches);
             Path path = Paths.get(properties.getWeibo().getCacheDir());
             Files.createDirectories(path.getParent());
-            Files.delete(path);
+            Files.deleteIfExists(path);
             Files.write(path, jsonStr.getBytes(StandardCharsets.UTF_8), StandardOpenOption.CREATE_NEW);
+        } catch (IOException e) {
+            logger.error(e.getMessage(), e);
+        }
+    }
+
+    private void deleteIfExists(Path path) {
+        try {
+            Files.deleteIfExists(path);
         } catch (IOException e) {
             logger.error(e.getMessage(), e);
         }

@@ -13,6 +13,7 @@ import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.context.annotation.Bean;
 
@@ -26,6 +27,9 @@ import okhttp3.Request;
 
 @SpringBootConfiguration
 public class WeibodConfiguration {
+
+    @Autowired
+    private WeibodProperties weibodProperties;
 
     @Bean
     public X509TrustManager x509TrustManager() {
@@ -88,6 +92,7 @@ public class WeibodConfiguration {
                             .header("Referer", "https://weibo.com/")
                             .header("Accept-Encoding", "identity")
                             .header("Connection", "close")
+                            .header("Cookie", weibodProperties.getWeibo().getApi().getCookie())
                             .build();
                     return chain.proceed(request);
                 }).build();

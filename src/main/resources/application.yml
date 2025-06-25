@@ -10,6 +10,7 @@ weibod:
   weibo:
     api:
       base-url: https://m.weibo.cn/api
+      cookie: _T_WM=36124947497; WEIBOCN_FROM=1110006030; SCF=AnSuu2DBoTSR8bqjIEijQVvG7kvUQ3nqjJ9kKIvOwytj6jKaj7ibbWgo57eqxUnHhfkr0XwMUvGsJHbVnAaE9Es.; SUB=_2A25FXyaKDeRhGeRI71YS9SbMwz-IHXVmFSZCrDV6PUJbktAbLVX1kW1NUrqrx3-YvAWQWnU3YPRIkQ3qsvXn_i3i; SUBP=0033WrSXqPxfM725Ws9jqgMF55529P9D9WhQXCaFU2eJ0-Jm2QUBX7WA5NHD95QESoBXe0-Rehn0Ws4Dqcj-i--fi-2Xi-2Ni--NiKyhi-8FC2.t; SSOLoginState=1750816474; ALF=1753408474; MLOGIN=1; XSRF-TOKEN=157345; mweibo_short_token=39c5d7fd45; M_WEIBOCN_PARAMS=luicode%3D10000011%26lfid%3D1076035328734864%26fid%3D1005055328734864%26uicode%3D10000011
     dest-dir: ${user.dir}/downloads
     cache-dir: ${user.dir}/cache/timeline_id.json
     user-dir: ${user.dir}/config/list.txt
