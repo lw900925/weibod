@@ -174,7 +174,7 @@ public class WebService {
                                     DateTimeFormatter.ofPattern("E MMM dd HH:mm:ss Z yyyy", Locale.ENGLISH));
 
                             // 只保留缓存中创建时间之后的微博
-                            if (createAt.isBefore(latest)) {
+                            if (createAt.isBefore(latest) || createAt.isEqual(latest)) {
                                 hasMore = false;
                                 break;
                             }
