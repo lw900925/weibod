@@ -281,7 +281,7 @@ public class WebService {
             String createdAt = mblog.get("created_at").getAsString();
 
             // 获取所有pics标签
-            if (mblog.has("pics")) {
+            if (mblog.has("pics") && mblog.get("pics").isJsonArray()) {
                 JsonArray pics = mblog.get("pics").getAsJsonArray();
                 for (int i = 0; i < pics.size(); i++) {
                     JsonObject pic = pics.get(i).getAsJsonObject();
