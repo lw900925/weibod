@@ -352,9 +352,16 @@ public class WebService {
                 String filename = DateTimeFormatter.ofPattern("yyyy_MM_dd_HH_mm").format(createDate)
                         + "_IMG_"
                         + Strings.padStart(i + second, 4, '0')
-                        + "."
-                        + getFileExtension(url).toUpperCase();
+                        + ".";
 
+                String extension = getFileExtension(url);
+                if (Strings.isNullOrEmpty(extension)) {
+                    filename = "错误的文件：url = " + url;
+                    return filename;
+                } else {
+                    filename += extension.toUpperCase();
+                }
+                
                 // 下载文件
                 return post(url, filename, screenName, 5);
             }).collect(Collectors.toList());
