@@ -1,53 +1,37 @@
 package io.lw900925.weibod.service;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.ProtocolException;
-import java.net.URI;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Spliterators;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import org.springframework.util.StreamUtils;
-
 import com.google.common.base.Joiner;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.util.concurrent.RateLimiter;
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-
+import com.google.gson.*;
 import io.lw900925.weibod.config.WeibodProperties;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StreamUtils;
 import reactor.core.publisher.FluxSink;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.ProtocolException;
+import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 /**
  * @author LIUWEI
@@ -57,14 +41,20 @@ public class WebService {
 
     private static final Logger logger = LoggerFactory.getLogger(WebService.class);
 
-    @Autowired
-    private OkHttpClient okHttpClient;
-    @Autowired
-    private WeibodProperties properties;
-    @Autowired
-    private Gson gson;
+    private final OkHttpClient okHttpClient;
+    private final WeibodProperties properties;
+    private final Gson gson;
 
-    private RateLimiter rateLimiter = RateLimiter.create(0.5);
+    public WebService(OkHttpClient okHttpClient,
+                      WeibodProperties properties,
+                      Gson gson) {
+        this.okHttpClient = okHttpClient;
+        this.properties = properties;
+        this.gson = gson;
+    }
+
+    @SuppressWarnings("UnstableApiUsage")
+    private final RateLimiter rateLimiter = RateLimiter.create(0.5);
 
     public void run(String uid, String filter, FluxSink<String> sink) {
         // 1.获取缓存
@@ -77,7 +67,7 @@ public class WebService {
         map = extract(map, filter, sink);
 
         // 4.下载文件
-        download(map, cacheMap, sink);
+        download(map, sink);
 
         // 5.更新缓存
         saveCache(cacheMap);
@@ -90,7 +80,7 @@ public class WebService {
                 String jsonStr = StreamUtils.copyToString(inputStream, StandardCharsets.UTF_8);
                 JsonArray caches = JsonParser.parseString(jsonStr).getAsJsonArray();
                 return StreamSupport.stream(Spliterators.spliteratorUnknownSize(caches.iterator(), 0), false)
-                        .map(c -> c.getAsJsonObject())
+                        .map(JsonElement::getAsJsonObject)
                         .map(c -> {
                             Map<String, String> cache = Maps.newHashMap();
                             cache.put("uid", c.get("uid").getAsString());
@@ -106,6 +96,7 @@ public class WebService {
         return Maps.newHashMap();
     }
 
+    @SuppressWarnings("UnstableApiUsage")
     public Map<String, Object> getTimelines(String uid, Map<String, Map<String, String>> cacheMap,
             FluxSink<String> sink) {
 
@@ -199,7 +190,7 @@ public class WebService {
         logger.debug("{} - 所有timeline已经获取完毕，结果集中共包含{}条", screenName, mblogs.size());
 
         // 更新缓存
-        if (mblogs.size() > 0) {
+        if (!mblogs.isEmpty()) {
             JsonObject mblog = mblogs.get(0).getAsJsonObject();
             cache.put("created_at", mblog.get("created_at").getAsString());
         }
@@ -237,8 +228,7 @@ public class WebService {
         String strQueryParam = String.join("&", keyValuePairs);
         url = url + "?" + strQueryParam;
         Request request = new Request.Builder().url(url).get().build();
-        try {
-            Response response = okHttpClient.newCall(request).execute();
+        try (Response response = okHttpClient.newCall(request).execute()) {
             if (response.isSuccessful() && response.body() != null) {
                 jsonStr = response.body().string();
             } else {
@@ -271,7 +261,7 @@ public class WebService {
         JsonObject user = (JsonObject) map.get("user");
         JsonArray mblogs = (JsonArray) map.get("mblogs");
 
-        if (mblogs.size() == 0) {
+        if (mblogs.isEmpty()) {
             map.put("live_photos", list);
             return map;
         }
@@ -320,8 +310,8 @@ public class WebService {
     }
 
     @SuppressWarnings("unchecked")
-    private void download(Map<String, Object> map, Map<String, Map<String, String>> cacheMap, FluxSink<String> sink) {
-        if (map == null || ((JsonArray) map.get("mblogs")).size() == 0) {
+    private void download(Map<String, Object> map, FluxSink<String> sink) {
+        if (map == null || ((JsonArray) map.get("mblogs")).isEmpty()) {
             return;
         }
 
@@ -472,19 +462,22 @@ public class WebService {
                         response.code(), response.message(), url);
                 logger.error(filename);
             }
-        } catch (ProtocolException e) {
-            if ("unexpected end of stream".equals(e.getMessage())) {
+        } catch (Throwable e) {
+            List<String> exceptions = properties.getWeibo().getRetryForExceptions();
+            String className = e.getClass().getName();
+            if (exceptions.contains(className)) {
+                logger.error(e.getMessage());
                 logger.warn("POST请求失败，正在重试: retry = {}，filename = {}, url = {}", retry, filename, url);
                 deleteIfExists(Paths.get(destDir, screenName, filename));
                 post(url, filename, screenName, --retry);
+            } else if (e instanceof FileAlreadyExistsException) {
+                logger.warn("文件已存在，跳过下载：filename = {}, url = {}", filename, url);
+                filename = String.format("[SKIP]:%s", filename);
+            } else {
+                filename = String.format("写入本地文件失败: url = %s, filename = %s", url, filename);
+                logger.error(filename);
+                logger.error(e.getMessage(), e);
             }
-        } catch (FileAlreadyExistsException e) {
-            logger.warn("文件已存在，跳过下载：filename = {}, url = {}", filename, url);
-            filename = String.format("[SKIP]:%s", filename);
-        } catch (IOException e) {
-            filename = String.format("写入本地文件失败: url = %s, filename = %s", url, filename);
-            logger.error(filename);
-            logger.error(e.getMessage(), e);
         }
 
         return filename;

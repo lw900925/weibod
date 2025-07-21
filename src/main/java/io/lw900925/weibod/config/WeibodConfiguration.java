@@ -1,11 +1,17 @@
 package io.lw900925.weibod.config;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
+import java.util.List;
 import java.util.Collections;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 import javax.net.ssl.SSLContext;
@@ -13,10 +19,14 @@ import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.io.Resource;
 
+import com.google.common.collect.Lists;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
@@ -27,6 +37,8 @@ import okhttp3.Request;
 
 @SpringBootConfiguration
 public class WeibodConfiguration {
+
+    private static final Logger logger = LoggerFactory.getLogger(WeibodConfiguration.class);
 
     @Autowired
     private WeibodProperties weibodProperties;
@@ -75,6 +87,21 @@ public class WeibodConfiguration {
 
     @Bean
     public OkHttpClient okHttpClient() {
+        // 读取cookie配置文件
+        String cookie = Optional.ofNullable(weibodProperties.getWeibo().getApi().getCookie())
+            .map(Paths::get)
+            .filter(Files::exists)
+            .map(path -> {
+                List<String> lines = Lists.newArrayList();
+                try {
+                    lines = Files.readAllLines(path, StandardCharsets.UTF_8);
+                } catch (IOException e) {
+                    logger.error("读取cookie文件错误: {}", e.getMessage(), e);
+                }
+                return lines;
+            })
+            .map(lines -> String.join("", lines)).orElse("");
+
         return new OkHttpClient.Builder()
                 .protocols(Collections.singletonList(Protocol.HTTP_1_1)) // 禁用HTTP/2
                 .connectTimeout(30, TimeUnit.SECONDS)
@@ -92,7 +119,7 @@ public class WeibodConfiguration {
                             .header("Referer", "https://weibo.com/")
                             .header("Accept-Encoding", "identity")
                             .header("Connection", "close")
-                            .header("Cookie", weibodProperties.getWeibo().getApi().getCookie())
+                            .header("Cookie", cookie)
                             .build();
                     return chain.proceed(request);
                 }).build();

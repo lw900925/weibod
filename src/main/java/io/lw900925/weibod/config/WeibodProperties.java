@@ -1,7 +1,11 @@
 package io.lw900925.weibod.config;
 
+import com.google.common.collect.Lists;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 @ConfigurationProperties(prefix = "weibod")
 @Component
@@ -24,6 +28,7 @@ public class WeibodProperties {
         private String destDir;
         private String cacheDir;
         private String userDir;
+        private List<String> retryForExceptions = Lists.newArrayList();
 
         public Api getApi() {
             return api;
@@ -63,6 +68,14 @@ public class WeibodProperties {
 
         public void setUserDir(String userDir) {
             this.userDir = userDir;
+        }
+
+        public List<String> getRetryForExceptions() {
+            return retryForExceptions;
+        }
+
+        public void setRetryForExceptions(List<String> retryForExceptions) {
+            this.retryForExceptions = retryForExceptions;
         }
 
         public static class Api {
