@@ -15,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StreamUtils;
+import org.springframework.util.StringUtils;
 import reactor.core.publisher.FluxSink;
 
 import java.io.IOException;
@@ -56,7 +57,7 @@ public class WebService {
     @SuppressWarnings("UnstableApiUsage")
     private final RateLimiter rateLimiter = RateLimiter.create(0.5);
 
-    public void run(String uid, String filter, FluxSink<String> sink) {
+    public void run(String uid, List<String> filters, FluxSink<String> sink) {
         // 1.获取缓存
         Map<String, Map<String, String>> cacheMap = loadCache();
 
@@ -64,7 +65,7 @@ public class WebService {
         Map<String, Object> map = getTimelines(uid, cacheMap, sink);
 
         // 3.提取图片链接
-        map = extract(map, filter, sink);
+        map = extract(map, filters, sink);
 
         // 4.下载文件
         download(map, sink);
@@ -98,7 +99,7 @@ public class WebService {
 
     @SuppressWarnings("UnstableApiUsage")
     public Map<String, Object> getTimelines(String uid, Map<String, Map<String, String>> cacheMap,
-            FluxSink<String> sink) {
+                                            FluxSink<String> sink) {
 
         // 获取用户信息
         JsonObject userInfo = getUserInfo(uid, sink);
@@ -251,7 +252,7 @@ public class WebService {
         return str;
     }
 
-    private Map<String, Object> extract(Map<String, Object> map, String filter, FluxSink<String> sink) {
+    private Map<String, Object> extract(Map<String, Object> map, List<String> filters, FluxSink<String> sink) {
         List<Map<String, String>> list = new ArrayList<>();
 
         if (map == null) {
@@ -276,29 +277,46 @@ public class WebService {
                 for (int i = 0; i < pics.size(); i++) {
                     JsonObject pic = pics.get(i).getAsJsonObject();
 
-                    Map<String, String> picMap = Maps.newHashMap();
-                    picMap.put("created_at", createdAt);
-                    picMap.put("index", String.valueOf(i + 1));
+                    Map<String, String> mediaMap = Maps.newHashMap();
+                    mediaMap.put("created_at", createdAt);
+                    mediaMap.put("index", String.valueOf(i + 1));
 
-                    // 如果仅下载LivePhoto且该图片是LivePhoto
                     String picUrl = pic.get("large").getAsJsonObject().get("url").getAsString();
-                    if ("all".equals(filter)) {
-                        picMap.put("img", picUrl);
-                        if (pic.has("videoSrc")) {
-                            String movUrl = pic.get("videoSrc").getAsString();
-                            picMap.put("mov", movUrl);
-                        }
-                    } else if ("livephoto".equals(filter) && pic.has("videoSrc")) {
-                        String movUrl = pic.get("videoSrc").getAsString();
-                        picMap.put("img", picUrl);
-                        picMap.put("mov", movUrl);
-                    } else {
-                        continue;
+                    if (filters.contains("picture")) {
+                        mediaMap.put("img", picUrl);
                     }
 
-                    list.add(picMap);
-                }
+                    if (filters.contains("livephoto") && pic.has("videoSrc")) {
+                        mediaMap.put("mov", pic.get("videoSrc").getAsString());
+                        if (!mediaMap.containsKey("img")) {
+                            mediaMap.put("img", picUrl);
+                        }
+                    }
 
+                    list.add(mediaMap);
+                }
+            }
+
+            // 处理video标签
+            if (mblog.has("page_info")) {
+                JsonObject pageInfo = mblog.get("page_info").getAsJsonObject();
+                if (pageInfo.has("type") && "video".equals(pageInfo.get("type").getAsString())) {
+                    Map<String, String> mediaMap = Maps.newHashMap();
+                    mediaMap.put("created_at", createdAt);
+                    mediaMap.put("index", String.valueOf(0));
+
+                    JsonObject urls = pageInfo.get("urls").getAsJsonObject();
+                    // 按照清晰度由高到低顺序下载
+                    if (urls.has("mp4_1080p_mp4")) {
+                        mediaMap.put("vid", urls.get("mp4_1080p_mp4").getAsString());
+                    }
+
+                    if (urls.has("mp4_720p_mp4")) {
+                        mediaMap.put("vid", urls.get("mp4_720p_mp4").getAsString());
+                    }
+
+                    list.add(mediaMap);
+                }
             }
         });
 
@@ -328,6 +346,7 @@ public class WebService {
         livePhotos.forEach(livePhoto -> {
             String imgUrl = livePhoto.get("img");
             String movUrl = livePhoto.get("mov");
+            String vidUrl = livePhoto.get("vid");
             String createdAt = livePhoto.get("created_at");
             String i = livePhoto.get("index");
 
@@ -337,7 +356,7 @@ public class WebService {
 
             int index = indexAI.incrementAndGet();
 
-            List<String> filenames = Lists.newArrayList(imgUrl, movUrl).stream().filter(Objects::nonNull).map(url -> {
+            List<String> filenames = Lists.newArrayList(imgUrl, movUrl, vidUrl).stream().filter(StringUtils::hasText).map(url -> {
                 // 文件命格式：yyyy_MM_dd_HH_mm_ss_IMG_0001.JPG
                 String filename = DateTimeFormatter.ofPattern("yyyy_MM_dd_HH_mm").format(createDate)
                         + "_IMG_"
@@ -351,7 +370,7 @@ public class WebService {
                 } else {
                     filename += extension.toUpperCase();
                 }
-                
+
                 // 下载文件
                 return post(url, filename, screenName, 5);
             }).collect(Collectors.toList());

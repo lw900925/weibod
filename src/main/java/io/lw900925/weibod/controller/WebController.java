@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.RestController;
 import io.lw900925.weibod.service.WebService;
 import reactor.core.publisher.Flux;
 
+import java.util.List;
+
 /**
  * @author LIUWEI
  */
@@ -20,11 +22,11 @@ public class WebController {
     private WebService webService;
 
     @GetMapping("/start")
-    public ResponseEntity<Flux<String>> start(@RequestParam String uid, @RequestParam String filter) {
+    public ResponseEntity<Flux<String>> start(@RequestParam String uid, @RequestParam List<String> filters) {
         return ResponseEntity.ok().contentType(MediaType.TEXT_EVENT_STREAM)
                 .body(Flux.create(sink -> {
                     try {
-                        webService.run(uid, filter, sink);
+                        webService.run(uid, filters, sink);
                         sink.complete();
                     } catch (Exception e) {
                         sink.error(e);

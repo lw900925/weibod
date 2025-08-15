@@ -100,18 +100,24 @@
       background: #0958d9;
     }
 
-    .navbar-select {
-      padding: 4px 10px;
-      border: none;
-      border-radius: 0;
-      background: #383e41;
+    .navbar-checkbox {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      margin: 0 4px;
+      height: 28px;
+    }
+
+    .navbar-checkbox input[type="checkbox"] {
+      margin: 0 6px 0 0;
+      cursor: pointer;
+      transform: scale(1.2);
+    }
+
+    .navbar-checkbox .checkbox-text {
       color: #d3d7cf;
       font-size: 0.8rem;
-      outline: none;
-      height: 28px;
-      box-sizing: border-box;
-      margin: 0 4px;
-      cursor: pointer;
+      user-select: none;
     }
   </style>
 </head>
@@ -121,10 +127,18 @@
     <div class="navbar">
       <div class="navbar-content">
         <input type="text" v-model="inputText" placeholder="请输入uid..." @keyup.enter="startStream">
-        <select v-model="filterType" class="navbar-select">
-          <option value="all">所有</option>
-          <option value="livephoto">仅LivePhoto</option>
-        </select>
+        <label class="navbar-checkbox">
+          <input type="checkbox" v-model="filters.livephoto">
+          <span class="checkbox-text">实况照片</span>
+        </label>
+        <label class="navbar-checkbox">
+          <input type="checkbox" v-model="filters.video">
+          <span class="checkbox-text">视频</span>
+        </label>
+        <label class="navbar-checkbox">
+          <input type="checkbox" v-model="filters.picture">
+          <span class="checkbox-text">图片</span>
+        </label>
         <button @click="startStream" :disabled="loading">{{ loading ? '处理中...' : '开始' }}</button>
       </div>
     </div>
@@ -140,7 +154,20 @@
         terminalContent: '没有正在下载的用户...',
         loading: false,
         eventSource: null,
-        filterType: 'livephoto'
+        filters: {
+          livephoto: true,
+          video: false,
+          picture: false
+        }
+      },
+      computed: {
+        filterType() {
+          const selectedFilters = [];
+          if (this.filters.livephoto) selectedFilters.push('livephoto');
+          if (this.filters.video) selectedFilters.push('video');
+          if (this.filters.picture) selectedFilters.push('picture');
+          return selectedFilters.length > 0 ? selectedFilters.join(',') : 'none';
+        }
       },
       methods: {
         startStream() {
@@ -151,7 +178,7 @@
             this.eventSource.close();
           }
           // 拼接参数到URL
-          const url = `/start?uid=${encodeURIComponent(this.inputText)}&filter=${encodeURIComponent(this.filterType)}`;
+          const url = `/start?uid=${encodeURIComponent(this.inputText)}&filters=${encodeURIComponent(this.filterType)}`;
           this.eventSource = new EventSource(url);
           this.eventSource.onmessage = (event) => {
             this.terminalContent += '<prompt>' + event.data + '</prompt>\n';
