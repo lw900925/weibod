@@ -293,6 +293,11 @@ public class WebService {
                         }
                     }
 
+                    // 如果照片和livephoto视频都没找到，则不加到列表中
+                    if (!mediaMap.containsKey("img") && !mediaMap.containsKey("mov")) {
+                        continue;
+                    }
+
                     list.add(mediaMap);
                 }
             }
